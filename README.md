@@ -1,6 +1,8 @@
 # MindForge
 MindForge is a Python library designed to provide sophisticated memory management capabilities for AI agents and models. It combines vector-based similarity search, concept graphs, and multi-level memory structures (short-term, long-term, user-specific, session-specific, and agent-specific) to enable more context-aware and adaptive AI responses.
 
+### *** Work In Progress ***
+
 ## Features
 
 *   **Multi-Level Memory:**  Organizes memories into different levels, including:
