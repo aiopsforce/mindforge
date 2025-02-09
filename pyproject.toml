@@ -1,0 +1,14 @@
+[project]
+name = "mindforge"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "faiss-cpu>=1.10.0",
+    "numpy>=2.2.2",
+    "openai>=1.61.1",
+    "requests>=2.32.3",
+    "scikit-learn>=1.6.1",
+    "sqlite-vec>=0.1.6",
+]
