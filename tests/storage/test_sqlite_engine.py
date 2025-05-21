@@ -208,13 +208,36 @@ def test_recency_boost_long_term_memory(memory_engine, sample_memory_data):
     updated_boost = updated_boost_row["recency_boost"]
     assert updated_boost == pytest.approx(initial_boost) # Should remain 1.0
     
+import sqlite3 # Added for helper functions
+import uuid # For generating unique IDs
+
 # Helper to get DB connection, if not exposed by SQLiteEngine
 # Add this to SQLiteEngine or make _get_db_connection public if needed for tests
 # For now, assuming _get_db_connection can be used for testing purposes.
-if not hasattr(SQLiteEngine, '_get_db_connection'):
-    def _get_db_connection_for_test(self):
-        return sqlite3.connect(self.db_path)
-    SQLiteEngine.prototype._get_db_connection = _get_db_connection_for_test
+# SQLiteEngine in the provided code does not have a public _get_db_connection.
+# For testing, we'll connect directly or add a helper if it were a real scenario.
+# However, memory_engine fixture provides the engine instance, and we can use its db_path.
+
+def get_db_connection(db_path: str):
+    """Helper to get a new SQLite connection for verification."""
+    return sqlite3.connect(db_path)
+
+def get_memory_details(conn: sqlite3.Connection, mem_id: str) -> sqlite3.Row:
+    """Fetches a memory's details from the memories table."""
+    return conn.execute("SELECT * FROM memories WHERE id = ?", (mem_id,)).fetchone()
+
+def get_user_memory_link(conn: sqlite3.Connection, mem_id: str, user_id: str) -> sqlite3.Row:
+    """Checks if a memory_id is linked to a user_id in user_memories."""
+    return conn.execute("SELECT * FROM user_memories WHERE memory_id = ? AND user_id = ?", (mem_id, user_id)).fetchone()
+
+def get_session_memory_link(conn: sqlite3.Connection, mem_id: str, session_id: str) -> sqlite3.Row:
+    """Checks if a memory_id is linked to a session_id in session_memories."""
+    return conn.execute("SELECT * FROM session_memories WHERE memory_id = ? AND session_id = ?", (mem_id, session_id)).fetchone()
+
+def get_agent_memory_link(conn: sqlite3.Connection, mem_id: str) -> sqlite3.Row:
+    """Checks if a memory_id is in agent_memories."""
+    return conn.execute("SELECT * FROM agent_memories WHERE memory_id = ?", (mem_id,)).fetchone()
+
 
 # Add a test for concept graph updates (basic)
 def test_concept_graph_updated_on_store(memory_engine, sample_memory_data):
@@ -256,4 +279,144 @@ def test_concept_graph_updated_on_store(memory_engine, sample_memory_data):
         updated_weight = cursor.fetchone()[0]
         assert updated_weight == pytest.approx(1.0 + 0.1) # Weight should increase by 0.1
 
-pytest.main() # For running from script, not needed if run via `pytest` command
+# --- Tests for update_memory_level ---
+
+def test_update_memory_level_short_to_user(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    user_id = "user_update_1"
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="short_term")
+
+    assert memory_engine.update_memory_level(mem_id, "user", user_id=user_id) is True
+
+    with get_db_connection(memory_engine.db_path) as conn:
+        mem_details = get_memory_details(conn, mem_id)
+        assert mem_details["memory_type"] == "user"
+        user_link = get_user_memory_link(conn, mem_id, user_id)
+        assert user_link is not None
+        assert user_link["preference"] == 0.0 # Check default metadata
+        assert get_session_memory_link(conn, mem_id, "any_session") is None
+        assert get_agent_memory_link(conn, mem_id) is None
+
+def test_update_memory_level_session_to_user(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    user_id = "user_update_2"
+    session_id = "session_update_1"
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="session", session_id=session_id)
+
+    assert memory_engine.update_memory_level(mem_id, "user", user_id=user_id) is True
+
+    with get_db_connection(memory_engine.db_path) as conn:
+        mem_details = get_memory_details(conn, mem_id)
+        assert mem_details["memory_type"] == "user"
+        user_link = get_user_memory_link(conn, mem_id, user_id)
+        assert user_link is not None
+        assert user_link["preference"] == 0.0
+        assert get_session_memory_link(conn, mem_id, session_id) is None # Should be removed
+
+def test_update_memory_level_short_to_agent(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="short_term")
+
+    assert memory_engine.update_memory_level(mem_id, "agent") is True
+    
+    with get_db_connection(memory_engine.db_path) as conn:
+        mem_details = get_memory_details(conn, mem_id)
+        assert mem_details["memory_type"] == "agent"
+        agent_link = get_agent_memory_link(conn, mem_id)
+        assert agent_link is not None
+        assert agent_link["knowledge"] == 0.0 # Check default metadata
+
+def test_update_memory_level_short_to_long_term(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="short_term")
+
+    assert memory_engine.update_memory_level(mem_id, "long_term") is True
+
+    with get_db_connection(memory_engine.db_path) as conn:
+        mem_details = get_memory_details(conn, mem_id)
+        assert mem_details["memory_type"] == "long_term"
+        # No specific association table for long_term
+
+def test_update_memory_level_user_to_short_term(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    user_id = "user_update_3"
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="user", user_id=user_id)
+
+    assert memory_engine.update_memory_level(mem_id, "short_term") is True
+
+    with get_db_connection(memory_engine.db_path) as conn:
+        mem_details = get_memory_details(conn, mem_id)
+        assert mem_details["memory_type"] == "short_term"
+        assert get_user_memory_link(conn, mem_id, user_id) is None # Should be removed
+
+def test_update_memory_level_missing_user_id(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="short_term")
+    with pytest.raises(ValueError, match="user_id is required for new_memory_level 'user'"):
+        memory_engine.update_memory_level(mem_id, "user") # No user_id
+
+def test_update_memory_level_missing_session_id(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="short_term")
+    with pytest.raises(ValueError, match="session_id is required for new_memory_level 'session'"):
+        memory_engine.update_memory_level(mem_id, "session") # No session_id
+
+def test_update_memory_level_non_existent_id(memory_engine: SQLiteEngine):
+    assert memory_engine.update_memory_level("non_existent_mem", "user", user_id="u1") is False
+
+def test_update_memory_level_no_change(memory_engine: SQLiteEngine, sample_memory_data):
+    mem_id = str(uuid.uuid4())
+    user_id = "user_update_4"
+    data = {**sample_memory_data, "id": mem_id}
+    memory_engine.store_memory(data, memory_type="user", user_id=user_id)
+    
+    # Attempting to "update" to the same level
+    assert memory_engine.update_memory_level(mem_id, "user", user_id=user_id) is False
+
+    # Verify no unintended changes occurred
+    with get_db_connection(memory_engine.db_path) as conn:
+        mem_details = get_memory_details(conn, mem_id)
+        assert mem_details["memory_type"] == "user"
+        assert get_user_memory_link(conn, mem_id, user_id) is not None
+
+def test_update_memory_level_default_metadata_values(memory_engine: SQLiteEngine, sample_memory_data):
+    """Test that new associations get default metadata values."""
+    mem_id_user = str(uuid.uuid4())
+    user_id = "user_meta_1"
+    data_user = {**sample_memory_data, "id": mem_id_user}
+    memory_engine.store_memory(data_user, memory_type="short_term")
+    memory_engine.update_memory_level(mem_id_user, "user", user_id=user_id)
+    
+    mem_id_session = str(uuid.uuid4())
+    session_id = "session_meta_1"
+    data_session = {**sample_memory_data, "id": mem_id_session}
+    memory_engine.store_memory(data_session, memory_type="short_term")
+    memory_engine.update_memory_level(mem_id_session, "session", session_id=session_id)
+
+    mem_id_agent = str(uuid.uuid4())
+    data_agent = {**sample_memory_data, "id": mem_id_agent}
+    memory_engine.store_memory(data_agent, memory_type="short_term")
+    memory_engine.update_memory_level(mem_id_agent, "agent")
+
+    with get_db_connection(memory_engine.db_path) as conn:
+        user_link = get_user_memory_link(conn, mem_id_user, user_id)
+        assert user_link["preference"] == 0.0
+        assert user_link["history"] == 0.0
+
+        session_link = get_session_memory_link(conn, mem_id_session, session_id)
+        assert session_link["recent_activity"] == 0.0
+        assert session_link["context"] == 0.0
+
+        agent_link = get_agent_memory_link(conn, mem_id_agent)
+        assert agent_link["knowledge"] == 0.0
+        assert agent_link["adaptability"] == 0.0
+
+
+# pytest.main() # For running from script, not needed if run via `pytest` command

@@ -49,7 +49,7 @@ class MemoryManager:
         memories = self.storage.retrieve_memories(
             query_embedding=query_embedding,
             concepts=concepts,
-            memory_type=memory_type,
+            memory_level=memory_type, # Changed from memory_type to memory_level
             user_id=user_id,
             session_id=session_id,
             # No specific limit from config is mentioned for retrieval in this task,
@@ -146,6 +146,12 @@ class MemoryManager:
             "timestamp": datetime.now().timestamp(),
         }
 
+        # Add user_id and session_id to memory_data if available
+        if user_id:
+            memory_data['user_id'] = user_id
+        if session_id:
+            memory_data['session_id'] = session_id
+
         # Add type-specific metadata, handling optional values
         if memory_type == "user":
             memory_data.update(
@@ -159,9 +165,9 @@ class MemoryManager:
         # Store the memory
         self.storage.store_memory(
             memory_data,
-            memory_type=memory_type,
-            user_id=user_id,
-            session_id=session_id,
+            memory_level=memory_type, # Changed from memory_type to memory_level
+            user_id=user_id, # user_id and session_id are passed explicitly for MemoryStore.add_interaction's direct params
+            session_id=session_id, # and also included in memory_data for its internal logic
         )
 
         self.interactions_since_last_clustering += 1

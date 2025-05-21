@@ -406,3 +406,71 @@ class SQLiteEngine(BaseStorage):
                         last_updated = excluded.last_updated
                 """, (c1, c2, timestamp))
 
+    def update_memory_level(
+        self,
+        memory_id: str,
+        new_memory_level: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None
+    ) -> bool:
+        """Update the level/type of an existing memory and its associations."""
+        if new_memory_level == "user" and not user_id:
+            # print("Error: user_id is required for new_memory_level 'user'.") # Or raise ValueError
+            raise ValueError("user_id is required for new_memory_level 'user'.")
+        if new_memory_level == "session" and not session_id:
+            # print("Error: session_id is required for new_memory_level 'session'.") # Or raise ValueError
+            raise ValueError("session_id is required for new_memory_level 'session'.")
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Fetch current memory_type
+            cursor.execute("SELECT memory_type FROM memories WHERE id = ?", (memory_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                # print(f"Warning: Memory with id {memory_id} not found.")
+                return False  # Memory does not exist
+
+            old_memory_level = row[0]
+
+            if old_memory_level == new_memory_level:
+                # print(f"Info: Memory {memory_id} is already at level {new_memory_level}.")
+                return False  # No change needed / Idempotency
+
+            # 1. Update memory_type in memories table
+            cursor.execute(
+                "UPDATE memories SET memory_type = ? WHERE id = ?",
+                (new_memory_level, memory_id)
+            )
+
+            # 2. Remove old specific associations
+            if old_memory_level == "user":
+                cursor.execute("DELETE FROM user_memories WHERE memory_id = ?", (memory_id,))
+            elif old_memory_level == "session":
+                cursor.execute("DELETE FROM session_memories WHERE memory_id = ?", (memory_id,))
+            elif old_memory_level == "agent":
+                cursor.execute("DELETE FROM agent_memories WHERE memory_id = ?", (memory_id,))
+
+            # 3. Add new specific associations
+            # For user, session, agent memories, we add default values for other columns.
+            # If specific values are needed, the method signature or data input would need to be extended.
+            if new_memory_level == "user":
+                cursor.execute(
+                    "INSERT INTO user_memories (memory_id, user_id, preference, history) VALUES (?, ?, 0.0, 0.0)",
+                    (memory_id, user_id)
+                )
+            elif new_memory_level == "session":
+                cursor.execute(
+                    "INSERT INTO session_memories (memory_id, session_id, recent_activity, context) VALUES (?, ?, 0.0, 0.0)",
+                    (memory_id, session_id)
+                )
+            elif new_memory_level == "agent":
+                cursor.execute(
+                    "INSERT INTO agent_memories (memory_id, knowledge, adaptability) VALUES (?, 0.0, 0.0)",
+                    (memory_id,)
+                )
+            
+            conn.commit()
+            return True
+

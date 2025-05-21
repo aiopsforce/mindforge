@@ -19,9 +19,12 @@ class MemoryStore:
         self.concepts_list = []
 
         # Multi-level memory tracking
-        self.user_memory = {}
-        self.session_memory = {}
-        self.agent_memory = {}
+        # user_memory stores user_id -> list of interaction_ids
+        self.user_memory = defaultdict(list)
+        # session_memory stores session_id -> list of interaction_ids
+        self.session_memory = defaultdict(list)
+        # agent_memory stores a list of interaction_ids
+        self.agent_memory = []
 
         # Initialize the vector store
         self._init_vector_store()
@@ -43,27 +46,42 @@ class MemoryStore:
         embedding = np.array(interaction["embedding"]).reshape(1, -1)
         timestamp = interaction.get("timestamp", datetime.now().timestamp())
 
-        # Store in appropriate memory level
-        if memory_level == "user":
-            self.user_memory[interaction_id] = interaction
-        elif memory_level == "session":
-            self.session_memory[interaction_id] = interaction
-        elif memory_level == "agent":
-            self.agent_memory[interaction_id] = interaction
-
-        # Add to short-term memory and FAISS index
+        # Add to short-term memory and FAISS index (main storage for indexed interactions)
         self.short_term_memory.append(interaction)
-        self.embeddings.append(embedding)
+        # Associated metadata lists are updated in sync with short_term_memory
+        self.embeddings.append(embedding) # Appending the raw embedding
         self.index.add(embedding)  # Add to FAISS index
         self.timestamps.append(timestamp)
-        self.access_counts.append(1)
+        self.access_counts.append(1) # Default access count
         self.concepts_list.append(set(interaction.get("concepts", [])))
+
+        # Store interaction_id in appropriate memory level for filtering
+        if memory_level == "user":
+            if "user_id" in interaction:
+                self.user_memory[interaction["user_id"]].append(interaction_id)
+            else:
+                # Handle missing user_id, perhaps log a warning or error
+                print(f"Warning: user_id missing for user-level memory interaction {interaction_id}")
+        elif memory_level == "session":
+            if "session_id" in interaction:
+                self.session_memory[interaction["session_id"]].append(interaction_id)
+            else:
+                # Handle missing session_id
+                print(f"Warning: session_id missing for session-level memory interaction {interaction_id}")
+        elif memory_level == "agent":
+            self.agent_memory.append(interaction_id)
+        elif memory_level == "long_term":
+            # long_term_memory stores the full interaction, not just ID
+            self.long_term_memory.append(interaction)
+        # No specific action for "short_term" as it's already in short_term_memory by default
 
     def retrieve(
         self,
         query_embedding: np.ndarray,
         query_concepts: List[str],
         memory_level: Optional[str] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         similarity_threshold: float = 0.7,
     ) -> List[Dict[str, Any]]:
         """
@@ -73,6 +91,7 @@ class MemoryStore:
         query_embedding = query_embedding.reshape(1, -1)
 
         # Get basic vector similarity matches using FAISS
+        # These matches are from the global short_term_memory pool
         relevant_interactions = self._get_vector_matches(
             query_embedding, similarity_threshold
         )
@@ -80,7 +99,7 @@ class MemoryStore:
         # Apply memory level filtering if specified
         if memory_level:
             relevant_interactions = self._filter_by_memory_level(
-                relevant_interactions, memory_level
+                relevant_interactions, memory_level, user_id, session_id
             )
 
         # Add concept-based relevance
@@ -112,23 +131,55 @@ class MemoryStore:
         return matches
 
     def _filter_by_memory_level(
-        self, interactions: List[Dict[str, Any]], memory_level: str
+        self,
+        interactions: List[Dict[str, Any]],
+        memory_level: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Filter interactions by memory level."""
-        memory_store = {
-            "user": self.user_memory,
-            "session": self.session_memory,
-            "agent": self.agent_memory,
-        }.get(memory_level)
+        """Filter interactions by memory level using interaction IDs."""
+        allowed_ids = set()
+        perform_filtering = True
 
-        if not memory_store:
+        if memory_level == "user":
+            if user_id and user_id in self.user_memory:
+                allowed_ids = set(self.user_memory[user_id])
+            else:
+                if not user_id:
+                    print("Warning: user_id not provided for user-level memory filtering.")
+                else:
+                    print(f"Warning: No user memory found for user_id {user_id}.")
+                return [] # Return empty if requested user memory level but no user_id or no data
+        elif memory_level == "session":
+            if session_id and session_id in self.session_memory:
+                allowed_ids = set(self.session_memory[session_id])
+            else:
+                if not session_id:
+                    print("Warning: session_id not provided for session-level memory filtering.")
+                else:
+                    print(f"Warning: No session memory found for session_id {session_id}.")
+                return [] # Return empty if requested session memory level but no session_id or no data
+        elif memory_level == "agent":
+            allowed_ids = set(self.agent_memory)
+        elif memory_level == "long_term":
+            # Assuming long_term_memory stores full interaction objects
+            allowed_ids = {lt_interaction["id"] for lt_interaction in self.long_term_memory}
+        elif memory_level == "short_term":
+            # Interactions are already from short_term_memory via FAISS, so no ID filtering needed here.
+            perform_filtering = False
+        else:
+            print(f"Warning: Unknown memory_level '{memory_level}' specified. No filtering applied.")
+            perform_filtering = False
+
+        if perform_filtering:
+            if not allowed_ids and memory_level in ["user", "session", "agent", "long_term"]:
+                 # If allowed_ids is empty for these specific levels, it means no relevant memories exist.
+                return []
+            return [
+                interaction for interaction in interactions if interaction["id"] in allowed_ids
+            ]
+        else:
             return interactions
-
-        return [
-            interaction
-            for interaction in interactions
-            if interaction["id"] in memory_store
-        ]
 
     def _add_concept_relevance(
         self, interactions: List[Dict[str, Any]], query_concepts: List[str]
@@ -187,3 +238,96 @@ class MemoryStore:
         # Normalize weights
         total = sum(related.values()) or 1
         return {k: v / total for k, v in related.items()}
+
+    # --- Memory Promotion Methods ---
+
+    def promote_to_long_term(self, interaction_id: str) -> bool:
+        """
+        Promotes an interaction from short-term memory to long-term memory.
+        The interaction remains in short-term memory and FAISS index.
+        Long-term memory is an additive store.
+
+        Args:
+            interaction_id: The ID of the interaction to promote.
+
+        Returns:
+            True if the interaction was promoted, False if it was already
+            in long-term memory or not found in short-term memory.
+        """
+        # Check if already in long-term memory
+        for lt_interaction in self.long_term_memory:
+            if lt_interaction["id"] == interaction_id:
+                return False  # Already exists
+
+        # Find in short-term memory and add to long-term memory
+        for st_interaction in self.short_term_memory:
+            if st_interaction["id"] == interaction_id:
+                self.long_term_memory.append(st_interaction.copy()) # Add a copy
+                return True
+
+        return False # Not found in short-term memory
+
+    def promote_session_to_user(self, interaction_id: str, user_id: str) -> bool:
+        """
+        Promotes an interaction ID from session-level tracking to user-level tracking.
+        The interaction itself remains in short_term_memory and FAISS.
+
+        Args:
+            interaction_id: The ID of the interaction to promote.
+            user_id: The ID of the user to associate the interaction with.
+
+        Returns:
+            True if the interaction ID was added to the user's memory,
+            False if it was already there, or if the interaction_id was not
+            found in any session, or if user_id is invalid.
+        """
+        if not user_id:
+            print("Warning: user_id cannot be empty for promote_session_to_user.")
+            return False
+
+        # Check if the interaction_id exists in any session
+        found_in_session = False
+        for session_interactions in self.session_memory.values():
+            if interaction_id in session_interactions:
+                found_in_session = True
+                break
+        
+        if not found_in_session:
+            # Optionally, one might also check if interaction_id is valid (i.e., in short_term_memory)
+            # but the primary check here is if it's part of *any* session.
+            # If it's not in any session, there's nothing to "promote" from session to user.
+            return False
+
+        # Check if already in the target user's memory
+        if interaction_id in self.user_memory[user_id]:
+            return False
+
+        self.user_memory[user_id].append(interaction_id)
+        return True
+
+    def mark_as_agent_knowledge(self, interaction_id: str) -> bool:
+        """
+        Marks an interaction ID as agent-level knowledge.
+        The interaction itself remains in short_term_memory and FAISS.
+
+        Args:
+            interaction_id: The ID of the interaction to mark.
+
+        Returns:
+            True if the interaction ID was marked as agent knowledge,
+            False if it was already marked or if the interaction_id is invalid
+            (e.g. not found in short_term_memory, though this check is optional
+            as agent_memory is just a list of IDs).
+        """
+        # Optional: Check if interaction_id is valid (exists in short_term_memory)
+        # For this implementation, we'll assume interaction_id is valid if provided.
+        # A more robust check would be:
+        # if not any(st_interaction["id"] == interaction_id for st_interaction in self.short_term_memory):
+        #     print(f"Warning: Interaction ID {interaction_id} not found in short-term memory.")
+        #     return False
+
+        if interaction_id in self.agent_memory:
+            return False  # Already marked
+
+        self.agent_memory.append(interaction_id)
+        return True
