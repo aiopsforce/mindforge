@@ -2,6 +2,7 @@
 from typing import Dict, Any, List
 from azure.openai import AzureOpenAI
 from ...core.base_model import BaseChatModel
+from ...utils.errors import ModelError
 
 
 class AzureChatModel(BaseChatModel):
@@ -30,13 +31,19 @@ class AzureChatModel(BaseChatModel):
 
     def extract_concepts(self, text: str) -> List[str]:
         messages = [
-            {"role": "system", "content": "Extract key concepts from the text."},
+            {"role": "system", "content": "Extract key concepts from the text. Return concepts as a comma-separated list."},
             {"role": "user", "content": text},
         ]
 
-        response = self.client.chat.completions.create(
-            model=self.deployment_name, messages=messages
-        )
-        #  Handle potential extra spaces and empty strings
-        concepts = response.choices[0].message.content.split(",")
-        return [c.strip() for c in concepts if c.strip()]
+        try:
+            response = self.client.chat.completions.create(
+                model=self.deployment_name, messages=messages
+            )
+            #  Handle potential extra spaces and empty strings
+            concepts_raw = response.choices[0].message.content
+            if concepts_raw is None:
+                return []
+            concepts = concepts_raw.split(",")
+            return [c.strip() for c in concepts if c.strip()]
+        except Exception as e: # Catching a broad exception, consider more specific Azure errors if available
+            raise ModelError(f"Azure API error during concept extraction: {e}")

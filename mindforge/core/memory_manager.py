@@ -3,7 +3,8 @@ from typing import Optional, Dict, Any, List
 import uuid
 from datetime import datetime
 from .base_model import BaseChatModel, BaseEmbeddingModel
-from ..storage.sqlite_engine import SQLiteEngine  # Use BaseStorage for flexibility
+from ..storage.base_storage import BaseStorage # Import BaseStorage
+from ..storage.sqlite_engine import SQLiteEngine
 from ..utils.graph import ConceptGraph
 from ..utils.clustering import MemoryClustering
 from ..config import AppConfig  # Import AppConfig
@@ -19,16 +20,16 @@ class MemoryManager:
         self,
         chat_model: BaseChatModel,
         embedding_model: BaseEmbeddingModel,
-        config: AppConfig,  # Accept AppConfig
+        storage_engine: BaseStorage, # Changed parameter
+        config: AppConfig, # config might still be needed for other things
     ):
         self.chat_model = chat_model
         self.embedding_model = embedding_model
         self.config = config  # Store the config
-        self.storage = SQLiteEngine(
-            config.storage.db_path, embedding_model.dimension
-        )  # Use config
-        self.concept_graph = ConceptGraph(self.storage)
-        self.clustering = MemoryClustering(self.storage)
+        self.storage = storage_engine # Use the passed-in engine
+        self.concept_graph = ConceptGraph(self.storage) # Uses the passed-in engine
+        self.clustering = MemoryClustering(self.storage) # Uses the passed-in engine
+        self.interactions_since_last_clustering = 0
 
     def process_input(
         self,
@@ -51,10 +52,21 @@ class MemoryManager:
             memory_type=memory_type,
             user_id=user_id,
             session_id=session_id,
+            # No specific limit from config is mentioned for retrieval in this task,
+            # but SQLiteEngine.retrieve_memories has a default limit of 10.
         )
 
+        # Filter memories by similarity threshold
+        if memories: # Ensure there are memories to filter
+            filtered_memories = [
+                mem for mem in memories
+                if mem.get('relevance_score', 0) >= self.config.memory.similarity_threshold
+            ]
+        else:
+            filtered_memories = []
+
         # Build context for response generation
-        context = self._build_context(memories, query)
+        context = self._build_context(filtered_memories, query)
 
         # Generate response
         response = self.chat_model.generate_response(context, query)
@@ -152,11 +164,7 @@ class MemoryManager:
             session_id=session_id,
         )
 
-        # Update concept relationships
-        for i, c1 in enumerate(concepts):
-            for c2 in concepts[i + 1 :]:
-                self.concept_graph.add_relationship(c1, c2)
-
-        # Periodically update clusters
-        if memory_type == "short_term":
+        self.interactions_since_last_clustering += 1
+        if self.interactions_since_last_clustering >= self.config.memory.clustering_trigger_threshold:
             self.clustering.cluster_memories()
+            self.interactions_since_last_clustering = 0

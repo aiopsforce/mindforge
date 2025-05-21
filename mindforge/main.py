@@ -10,6 +10,7 @@ from mindforge.models.embedding import (
     AzureEmbeddingModel,
     OllamaEmbeddingModel,
 )
+from mindforge.storage.sqlite_engine import SQLiteEngine # Import SQLiteEngine
 from mindforge.config import AppConfig  # Import AppConfig
 from typing import Optional
 
@@ -105,10 +106,31 @@ def main():
             chat_model, embedding_model = initialize_models(config)
             logger.info("AI models initialized successfully")
 
+            # Validate embedding dimension
+            if embedding_model.dimension != config.vector.embedding_dim:
+                error_msg = (
+                    f"Embedding dimension mismatch: Model dimension is {embedding_model.dimension}, "
+                    f"config.vector.embedding_dim is {config.vector.embedding_dim}. "
+                    "Please ensure the configuration matches the embedding model."
+                )
+                logger.error(error_msg)
+                raise ConfigurationError(error_msg)
+            logger.info(f"Embedding dimension validated: {embedding_model.dimension}")
+
+            # Initialize storage engine
+            storage_engine = SQLiteEngine(
+                db_path=config.storage.db_path,
+                embedding_dim=embedding_model.dimension # Uses the validated dimension
+            )
+            logger.info("Storage engine initialized successfully")
+
             # Initialize memory manager
             manager = MemoryManager(
-                chat_model=chat_model, embedding_model=embedding_model, config=config
-            )  # Pass config
+                chat_model=chat_model,
+                embedding_model=embedding_model,
+                storage_engine=storage_engine,
+                config=config
+            )
             logger.info("Memory manager initialized successfully")
 
         except ConfigurationError as e:
