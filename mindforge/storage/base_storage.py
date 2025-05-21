@@ -29,3 +29,14 @@ class BaseStorage(ABC):  # Moved to its own file
     ) -> List[Dict[str, Any]]:
         """Retrieve relevant memories with multi-level context."""
         pass
+
+    @abstractmethod
+    def update_memory_level(
+        self,
+        memory_id: str,
+        new_memory_level: str,
+        user_id: str = None, # Required if new_memory_level is 'user'
+        session_id: str = None # Required if new_memory_level is 'session'
+    ) -> bool:
+        """Update the level/type of an existing memory and its associations."""
+        pass
