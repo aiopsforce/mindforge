@@ -1,6 +1,7 @@
 import openai
 from typing import Dict, Any, List
 from ...core.base_model import BaseChatModel
+from ...utils.errors import ModelError
 
 class OpenAIChatModel(BaseChatModel):
     def __init__(self, api_key: str, model_name: str = "gpt-4"):

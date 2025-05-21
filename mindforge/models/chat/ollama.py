@@ -2,6 +2,7 @@
 import requests
 from typing import Dict, Any, List
 from ...core.base_model import BaseChatModel
+from ...utils.errors import ModelError
 
 
 class OllamaChatModel(BaseChatModel):
@@ -37,9 +38,12 @@ class OllamaChatModel(BaseChatModel):
             )
             response.raise_for_status()
             # Handle potential extra spaces and empty strings.  Also handle cases where response isn't a simple comma separated list.
-            concepts = response.json()["response"].split(",")
+            concepts_raw = response.json().get("response")
+            if concepts_raw is None:
+                return []
+            concepts = concepts_raw.split(",")
             return [c.strip() for c in concepts if c.strip()]
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Failed to connect to Ollama: {e}")
+            raise ModelError(f"Ollama API error during concept extraction: {e}")
         except ValueError:  # JSONDecodeError is a subclass of ValueError
-            return [] # Return empty list if we cannot decode concepts
+            raise ModelError(f"Failed to decode JSON response from Ollama during concept extraction: {e}")

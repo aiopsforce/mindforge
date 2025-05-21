@@ -43,7 +43,7 @@ class SQLiteEngine(BaseStorage):
                     memory_type TEXT CHECK(
                         memory_type IN ('short_term', 'long_term', 'user', 'session', 'agent')
                     ) NOT NULL,
-                    decay_factor REAL DEFAULT 1.0
+                    recency_boost REAL DEFAULT 1.0
                 );
 
                 -- Concepts table
@@ -120,7 +120,7 @@ class SQLiteEngine(BaseStorage):
                 INSERT INTO memories (
                     id, prompt, response, timestamp,
                     access_count, last_access, memory_type,
-                    decay_factor
+                    recency_boost
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
@@ -300,7 +300,7 @@ class SQLiteEngine(BaseStorage):
                     + memory_data.get("user_preference", 0) * 0.15
                     + memory_data.get("session_activity", 0) * 0.15
                     + memory_data.get("agent_knowledge", 0) * 0.1
-                ) * memory_data["decay_factor"]
+                ) * memory_data["recency_boost"]
 
                 results.append(memory_data)
 
@@ -382,9 +382,9 @@ class SQLiteEngine(BaseStorage):
             UPDATE memories 
             SET access_count = access_count + 1,
                 last_access = ?,
-                decay_factor = CASE
-                    WHEN memory_type = 'short_term' THEN decay_factor * 1.1  
-                    ELSE decay_factor
+                recency_boost = CASE
+                    WHEN memory_type = 'short_term' THEN recency_boost * 1.1  
+                    ELSE recency_boost
                 END
             WHERE id = ?
         """,

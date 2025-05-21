@@ -7,12 +7,13 @@ from typing import Optional
 class MemoryConfig:
     """Configuration for memory management."""
 
-    short_term_limit: int = 1000
-    long_term_limit: int = 10000
+    short_term_limit: int = 1000  # Max number of entries in short-term memory (Note: Not strictly enforced by current SQLiteEngine; primarily for alternative storage or future eviction policies).
+    long_term_limit: int = 10000  # Max number of entries in long-term memory (Note: Not strictly enforced by current SQLiteEngine; primarily for alternative storage or future eviction policies).
     similarity_threshold: float = 0.7
-    decay_rate: float = 0.1
-    reinforcement_rate: float = 0.1
-    min_access_for_long_term: int = 5
+    decay_rate: float = 0.1  # Rate at which memory relevance decays over time (Note: Current SQLiteEngine uses recency_boost on access; true time-based decay is a future enhancement).
+    reinforcement_rate: float = 0.1  # Rate at which memory relevance is reinforced (Note: Partially addressed by recency_boost; more explicit reinforcement is a future enhancement).
+    min_access_for_long_term: int = 5  # Minimum access count to promote a memory to long-term (Note: Memory promotion not yet implemented).
+    clustering_trigger_threshold: int = 100
 
 
 @dataclass
@@ -20,9 +21,9 @@ class VectorConfig:
     """Configuration for vector operations."""
 
     embedding_dim: int = 1536
-    index_type: str = "l2"  # Consider using "cosine" for cosine similarity
-    batch_size: int = 32
-    max_neighbors: int = 100
+    index_type: str = "l2"  # Type of index for vector search (e.g., "l2", "cosine"). (Note: sqlite-vec handles this internally based on embedding type; more relevant for other vector DBs like FAISS).
+    batch_size: int = 32  # Batch size for embedding generation or batch database operations (Note: Current implementation processes interactively; relevant for future batch processing features).
+    max_neighbors: int = 100  # Maximum number of neighbors to retrieve in vector search (Note: Retrieval limit is currently set per query in MemoryManager/SQLiteEngine; this could be a default for index configuration in other vector DBs).
 
 
 @dataclass
