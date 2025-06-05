@@ -1,10 +1,21 @@
 
 import sqlite3
+
+# Ensure all sqlite connections use Row factory by default
+_original_connect = sqlite3.connect
+
+def _connect_with_row_factory(*args, **kwargs):
+    conn = _original_connect(*args, **kwargs)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+sqlite3.connect = _connect_with_row_factory
 import numpy as np
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
 import sqlite_vec  # For vector operations
+from contextlib import contextmanager
 from .base_storage import BaseStorage  # Import BaseStorage
 
 
@@ -12,25 +23,51 @@ class SQLiteEngine(BaseStorage):
     """Enhanced SQLite storage with vector search and multi-level memory."""
 
     def __init__(self, db_path: str = "mindforge.db", embedding_dim: int = 1536):
-        self.db_path = db_path
+        if db_path == ":memory:":
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(delete=False)
+            self.db_path = tmp.name
+            tmp.close()
+            self._uri = False
+        else:
+            self.db_path = db_path
+            self._uri = False
         self.embedding_dim = embedding_dim
         self._initialize_db()
 
     def _initialize_db(self) -> None:
         """Initialize database with vector search and memory levels."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.enable_load_extension(True)  # Enable extension loading
-            sqlite_vec.load(conn)  # Load sqlite-vec extension
-            conn.enable_load_extension(False) # Disable extension loading
+        self.vec_enabled = False
+        with self._get_db_connection() as conn:
+            if hasattr(conn, "enable_load_extension"):
+                try:
+                    conn.enable_load_extension(True)
+                    sqlite_vec.load(conn)
+                    conn.enable_load_extension(False)
+                    self.vec_enabled = True
+                except Exception:
+                    self.vec_enabled = False
 
             # Enable WAL mode for better concurrency
             conn.execute("PRAGMA journal_mode=WAL")
 
+            if self.vec_enabled:
+                vector_table = f"""
+                CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors
+                USING vec0(embedding float[{self.embedding_dim}]);
+                """
+            else:
+                vector_table = """
+                CREATE TABLE IF NOT EXISTS memory_vectors (
+                    rowid TEXT PRIMARY KEY,
+                    embedding TEXT
+                );
+                """
+
             conn.executescript(
                 f"""
                 -- Vector storage
-                CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors 
-                USING vec0(embedding float[{self.embedding_dim}]);
+                {vector_table}
 
                 -- Core memories table
                 CREATE TABLE IF NOT EXISTS memories (
@@ -110,8 +147,7 @@ class SQLiteEngine(BaseStorage):
         session_id: Optional[str] = None,
     ) -> None:
         """Store memory with appropriate type and metadata."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row  # Use Row factory for dict-like access
+        with self._get_db_connection() as conn:
             current_time = datetime.now().timestamp()
 
             # Store core memory
@@ -191,7 +227,7 @@ class SQLiteEngine(BaseStorage):
             elif memory_type == "agent":
                 conn.execute(
                     """
-                    INSERT INTO agent_memories 
+                    INSERT INTO agent_memories
                     (memory_id, knowledge, adaptability)
                     VALUES (?, ?, ?)
                 """,
@@ -201,6 +237,8 @@ class SQLiteEngine(BaseStorage):
                         memory_data.get("adaptability", 0.0),
                     ),
                 )
+
+            conn.commit()
 
     def retrieve_memories(
         self,
@@ -212,83 +250,116 @@ class SQLiteEngine(BaseStorage):
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """Retrieve relevant memories with multi-level context."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            query_vector = json.dumps(query_embedding.tolist())
+        with self._get_db_connection() as conn:
 
-            # Base query for vector similarity
-            base_query = """
-                WITH vector_scores AS (
-                    SELECT 
-                        rowid as memory_id,
-                        distance as vector_distance
-                    FROM memory_vectors
-                    WHERE embedding MATCH ?
-                    ORDER BY distance
-                    LIMIT ?
-                )
-            """
+            if self.vec_enabled:
+                query_vector = json.dumps(query_embedding.tolist())
+
+                # Base query for vector similarity using sqlite-vec
+                base_query = """
+                    WITH vector_scores AS (
+                        SELECT
+                            rowid as memory_id,
+                            distance as vector_distance
+                        FROM memory_vectors
+                        WHERE embedding MATCH ?
+                        ORDER BY distance
+                        LIMIT ?
+                    )
+                """
+            else:
+                # We'll compute vector distances in Python, so just select embeddings
+                base_query = """
+                    WITH vector_scores AS (
+                        SELECT
+                            rowid as memory_id,
+                            embedding
+                        FROM memory_vectors
+                    )
+                """
 
             # Add type-specific joins and conditions
             if memory_type == "user" and user_id:
                 type_join = """
-                    JOIN user_memories um ON m.id = um.memory_id
-                    WHERE um.user_id = ?
+                    JOIN user_memories um_filter ON m.id = um_filter.memory_id
+                    WHERE um_filter.user_id = ?
                 """
-                params = (query_vector, limit * 2, user_id)  # Increased limit for filtering
+                params = ([query_vector, limit * 2, user_id] if self.vec_enabled else [user_id])
             elif memory_type == "session" and session_id:
                 type_join = """
-                    JOIN session_memories sm ON m.id = sm.memory_id
-                    WHERE sm.session_id = ?
+                    JOIN session_memories sm_filter ON m.id = sm_filter.memory_id
+                    WHERE sm_filter.session_id = ?
                 """
-                params = (query_vector, limit * 2, session_id)
+                params = ([query_vector, limit * 2, session_id] if self.vec_enabled else [session_id])
             elif memory_type == "agent":
                 type_join = """
-                    JOIN agent_memories am ON m.id = am.memory_id
+                    JOIN agent_memories am_filter ON m.id = am_filter.memory_id
                 """
-                params = (query_vector, limit * 2)
+                params = ([query_vector, limit * 2] if self.vec_enabled else [])
             else:
                 type_join = ""
-                params = (query_vector, limit * 2)
+                params = ([query_vector, limit * 2] if self.vec_enabled else [])
 
-            # Complete query with all components
-            query = f"""
-                {base_query}
-                SELECT 
-                    m.*,
-                    v.vector_distance,
-                    GROUP_CONCAT(c.concept) as concepts,
-                    COALESCE(um.preference, 0) as user_preference,
-                    COALESCE(um.history, 0) as user_history,
-                    COALESCE(sm.recent_activity, 0) as session_activity,
-                    COALESCE(sm.context, 0) as session_context,
-                    COALESCE(am.knowledge, 0) as agent_knowledge,
-                    COALESCE(am.adaptability, 0) as agent_adaptability
-                FROM vector_scores v
-                JOIN memories m ON m.id = v.memory_id
-                LEFT JOIN concepts c ON m.id = c.memory_id
-                LEFT JOIN user_memories um ON m.id = um.memory_id  
-                LEFT JOIN session_memories sm ON m.id = sm.memory_id
-                LEFT JOIN agent_memories am ON m.id = am.memory_id
-                {type_join}
-                GROUP BY m.id
-                ORDER BY v.vector_distance
-            """
+            if self.vec_enabled:
+                query = f"""
+                    {base_query}
+                    SELECT
+                        m.*,
+                        v.vector_distance,
+                        GROUP_CONCAT(c.concept) as concepts,
+                        COALESCE(um.preference, 0) as user_preference,
+                        COALESCE(um.history, 0) as user_history,
+                        COALESCE(sm.recent_activity, 0) as session_activity,
+                        COALESCE(sm.context, 0) as session_context,
+                        COALESCE(am.knowledge, 0) as agent_knowledge,
+                        COALESCE(am.adaptability, 0) as agent_adaptability
+                    FROM vector_scores v
+                    JOIN memories m ON m.id = v.memory_id
+                    LEFT JOIN concepts c ON m.id = c.memory_id
+                    LEFT JOIN user_memories um ON m.id = um.memory_id
+                    LEFT JOIN session_memories sm ON m.id = sm.memory_id
+                    LEFT JOIN agent_memories am ON m.id = am.memory_id
+                    {type_join}
+                    GROUP BY m.id
+                    ORDER BY v.vector_distance
+                """
+            else:
+                query = f"""
+                    {base_query}
+                    SELECT
+                        m.*,
+                        v.embedding,
+                        GROUP_CONCAT(c.concept) as concepts,
+                        COALESCE(um.preference, 0) as user_preference,
+                        COALESCE(um.history, 0) as user_history,
+                        COALESCE(sm.recent_activity, 0) as session_activity,
+                        COALESCE(sm.context, 0) as session_context,
+                        COALESCE(am.knowledge, 0) as agent_knowledge,
+                        COALESCE(am.adaptability, 0) as agent_adaptability
+                    FROM vector_scores v
+                    JOIN memories m ON m.id = v.memory_id
+                    LEFT JOIN concepts c ON m.id = c.memory_id
+                    LEFT JOIN user_memories um ON m.id = um.memory_id
+                    LEFT JOIN session_memories sm ON m.id = sm.memory_id
+                    LEFT JOIN agent_memories am ON m.id = am.memory_id
+                    {type_join}
+                    GROUP BY m.id
+                """
 
             results = []
             for row in conn.execute(query, params):
                 memory_data = dict(row)
-                # Convert comma-separated concepts string to a list
                 memory_data["concepts"] = (
-                    memory_data.get("concepts", "").split(",")
-                    if memory_data.get("concepts")
-                    else []
+                    memory_data.get("concepts", "").split(",") if memory_data.get("concepts") else []
                 )
 
-                # Calculate combined relevance score
-                vector_similarity = 1 / (
-                    1 + memory_data["vector_distance"]
-                )  # Convert distance to similarity
+                if self.vec_enabled:
+                    vector_distance = memory_data["vector_distance"]
+                else:
+                    embedding = np.array(json.loads(memory_data.pop("embedding")))
+                    vector_distance = float(np.linalg.norm(embedding - query_embedding))
+                    memory_data["vector_distance"] = vector_distance
+                vector_similarity = 1 / (1 + vector_distance)
                 concept_score = self._calculate_concept_score(
                     conn, memory_data["concepts"], concepts
                 )
@@ -306,6 +377,7 @@ class SQLiteEngine(BaseStorage):
 
             # Update access patterns
             self._update_access_patterns(conn, [r["id"] for r in results])
+            conn.commit()
 
             # Sort by relevance and apply final limit
             return sorted(results, key=lambda x: x["relevance_score"], reverse=True)[
@@ -421,7 +493,7 @@ class SQLiteEngine(BaseStorage):
             # print("Error: session_id is required for new_memory_level 'session'.") # Or raise ValueError
             raise ValueError("session_id is required for new_memory_level 'session'.")
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_db_connection() as conn:
             cursor = conn.cursor()
 
             # Fetch current memory_type
@@ -473,4 +545,24 @@ class SQLiteEngine(BaseStorage):
             
             conn.commit()
             return True
+
+    @contextmanager
+    def _get_db_connection(self) -> sqlite3.Connection:
+        """Yield a SQLite connection, reusing in-memory DB if needed."""
+        if self._uri:
+            if not hasattr(self, "_connection") or self._connection is None:
+                self._connection = sqlite3.connect(self.db_path, uri=True)
+                self._connection.row_factory = sqlite3.Row
+            conn = self._connection
+            try:
+                yield conn
+            finally:
+                pass  # keep connection open for in-memory DB
+        else:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            try:
+                yield conn
+            finally:
+                conn.close()
 
