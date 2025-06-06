@@ -314,12 +314,9 @@ print("\n--- Cleanup ---")
 # Delete the test database file.
 if os.path.exists(config.storage.db_path):
     try:
-        # Attempt to close the database connection if SQLiteEngine has a close method
-        if hasattr(storage_engine, 'close'):
-             storage_engine.close() # Assuming a close method exists or will be added
-        elif hasattr(storage_engine, '_close_db'): # For older versions if any
-             storage_engine._close_db()
-
+        # SQLiteEngine uses a context manager for its connections when not an in-memory DB,
+        # so explicit closing is handled by the engine's methods already for file-based DBs.
+        # If storage_engine held a persistent connection, closing it here would be vital.
         os.remove(config.storage.db_path)
         logger.info(f"Test database '{config.storage.db_path}' cleaned up successfully.")
         print(f"Test database '{config.storage.db_path}' cleaned up.")

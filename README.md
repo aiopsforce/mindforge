@@ -35,17 +35,13 @@ pip install -e .
 
 ## Dependencies:
 
-```bash
-openai (for OpenAI models)
-azure-openai (for Azure OpenAI models)
-requests (for Ollama models)
-sqlite-vec (for vector search)
-faiss-cpu (for FAISS-based MemoryStore)
-scikit-learn (for clustering and vector optimization)
-scipy (for vector optimization)
+The canonical list of dependencies is maintained in the `pyproject.toml` file.
+For quick installation using pip, you can install the core dependencies with the following command:
 
-pip install openai azure-openai requests sqlite-vec faiss-cpu scikit-learn scipy
+```bash
+pip install azure-openai faiss-cpu numpy openai requests scikit-learn scipy sqlite-vec
 ```
+Note: If you clone the repository and want to install all dependencies for development, including the MindForge package itself in editable mode, please use `pip install -e .` from the repository root, as done by the `run_example.sh` script. The `run_example.sh` script also handles creating a virtual environment.
 
 ## Quick Start
 
@@ -201,6 +197,27 @@ query_concepts = ["interaction"]
 retrieved = memory_store.retrieve(query_embedding, query_concepts, memory_level="user") # Retrieve from user memory
 print(f"Retrieved interactions: {retrieved}")
 ```
+
+## Running the Full Example
+
+A helper script `run_example.sh` is provided in the root of the repository to streamline the setup and execution of a comprehensive example found in `examples/full_example.py`.
+
+This script will:
+1. Check for the required Python version (3.12+).
+2. Create a Python virtual environment in `.venv/` if it doesn't exist.
+3. Activate the virtual environment.
+4. Install all necessary dependencies using `pip install -e .` (which installs the package in editable mode along with its dependencies listed in `pyproject.toml`).
+5. Guide you through the necessary API key configuration for services like OpenAI or Azure OpenAI before running the example.
+
+To use the script, navigate to the root of the repository in your terminal and run:
+```bash
+./run_example.sh
+```
+Or, if it's not executable by default on your system:
+```bash
+bash run_example.sh
+```
+The script will prompt you to confirm that you have set the required API keys as environment variables. Please follow the instructions provided by the script.
 
 ## MemoryManager
 The MemoryManager is the central class for processing user input and managing memories.
