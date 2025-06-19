@@ -4,11 +4,17 @@ import os
 from mindforge.utils.logging import LogManager
 from mindforge.utils.errors import ConfigurationError, ModelError
 from mindforge import MemoryManager
-from mindforge.models.chat import OpenAIChatModel, AzureChatModel, OllamaChatModel
+from mindforge.models.chat import (
+    OpenAIChatModel,
+    AzureChatModel,
+    OllamaChatModel,
+    LiteLLMChatModel,
+)
 from mindforge.models.embedding import (
     OpenAIEmbeddingModel,
     AzureEmbeddingModel,
     OllamaEmbeddingModel,
+    LiteLLMEmbeddingModel,
 )
 from mindforge.storage.sqlite_engine import SQLiteEngine # Import SQLiteEngine
 from mindforge.config import AppConfig  # Import AppConfig
@@ -58,6 +64,18 @@ def initialize_models(config: AppConfig):
             embedding_model = OllamaEmbeddingModel(
                 model_name=config.model.embedding_model_name,
                 base_url=config.model.ollama_base_url,
+            )
+        elif config.model.use_model == "litellm":
+            chat_model = LiteLLMChatModel(
+                model_name=config.model.chat_model_name,
+                api_key=config.model.chat_api_key,
+                base_url=config.model.litellm_base_url,
+            )
+            embedding_model = LiteLLMEmbeddingModel(
+                model_name=config.model.embedding_model_name,
+                api_key=config.model.embedding_api_key,
+                base_url=config.model.litellm_base_url,
+                dimension=config.vector.embedding_dim,
             )
         else:
             raise ConfigurationError(f"Unsupported model provider: {config.model.use_model}")

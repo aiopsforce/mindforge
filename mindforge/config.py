@@ -37,7 +37,8 @@ class ModelConfig:
     azure_endpoint: Optional[str] = None
     azure_api_version: Optional[str] = None
     ollama_base_url: str = "http://localhost:11434"
-    use_model: str = "openai"  # Added:  Specify which provider to use (openai, azure, ollama)
+    litellm_base_url: Optional[str] = None
+    use_model: str = "openai"  # Added:  Specify which provider to use (openai, azure, ollama, litellm)
 
 
 @dataclass
