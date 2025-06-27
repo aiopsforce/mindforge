@@ -16,6 +16,8 @@ MindForge is a Python library designed to provide sophisticated memory managemen
 *   **Semantic Clustering:**  Groups memories based on their embeddings, improving retrieval efficiency and identifying related concepts.
 *   **Flexible Storage:**  Provides `SQLiteEngine` and `SQLiteVecEngine` for persistent storage, with options for optimizing performance.
 *   **Model Agnostic:**  Supports OpenAI, Azure OpenAI, Ollama, and any provider available through `litellm`, with an easily extensible interface for adding other models.
+*   **Flexible Storage:**  Provides `SQLiteEngine`, `SQLiteVecEngine`, and optional engines for Redis, PostgreSQL, and ChromaDB vector storage.
+*   **Model Agnostic:**  Supports OpenAI, Azure OpenAI, and Ollama models for chat and embedding generation, with an easily extensible interface for adding other models.
 *   **Built-in Utilities:**  Includes tools for logging, monitoring, vector optimization, profiling, and input validation.
 *   **Configurable:** Uses dataclasses for easy configuration of memory, vector, model, and storage parameters.
 
