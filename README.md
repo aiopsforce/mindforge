@@ -14,6 +14,8 @@ MindForge is a Python library designed to provide sophisticated memory managemen
 *   **Vector-Based Similarity Search:**  Uses `sqlite-vec` (and optionally FAISS) for fast and efficient retrieval of memories based on semantic similarity.
 *   **Concept Graph:**  Builds and maintains a graph of relationships between concepts, enabling spreading activation for enhanced retrieval.
 *   **Semantic Clustering:**  Groups memories based on their embeddings, improving retrieval efficiency and identifying related concepts.
+*   **Flexible Storage:**  Provides `SQLiteEngine` and `SQLiteVecEngine` for persistent storage, with options for optimizing performance.
+*   **Model Agnostic:**  Supports OpenAI, Azure OpenAI, Ollama, and any provider available through `litellm`, with an easily extensible interface for adding other models.
 *   **Flexible Storage:**  Provides `SQLiteEngine`, `SQLiteVecEngine`, and optional engines for Redis, PostgreSQL, and ChromaDB vector storage.
 *   **Model Agnostic:**  Supports OpenAI, Azure OpenAI, and Ollama models for chat and embedding generation, with an easily extensible interface for adding other models.
 *   **Built-in Utilities:**  Includes tools for logging, monitoring, vector optimization, profiling, and input validation.
@@ -165,7 +167,36 @@ manager = MemoryManager(
 response = manager.process_input(query="Explain quantum physics.")
 print(f"Response: {response}")
 
-# --- Example 4:  Using MemoryStore (FAISS) ---
+# --- Example 4: Using LiteLLM for Multi-Provider Support ---
+
+config = AppConfig()
+config.model.use_model = "litellm"
+config.model.chat_model_name = "gpt-3.5-turbo"  # Any model supported by litellm
+config.model.embedding_model_name = "text-embedding-3-small"
+config.model.chat_api_key = "your_provider_api_key"
+config.model.embedding_api_key = "your_provider_api_key"
+config.model.litellm_base_url = "https://api.openai.com/v1"  # Example base URL
+
+from mindforge.models.chat import LiteLLMChatModel
+from mindforge.models.embedding import LiteLLMEmbeddingModel
+
+chat_model = LiteLLMChatModel(
+    model_name=config.model.chat_model_name,
+    api_key=config.model.chat_api_key,
+    base_url=config.model.litellm_base_url,
+)
+embedding_model = LiteLLMEmbeddingModel(
+    model_name=config.model.embedding_model_name,
+    api_key=config.model.embedding_api_key,
+    base_url=config.model.litellm_base_url,
+)
+
+manager = MemoryManager(chat_model=chat_model, embedding_model=embedding_model, config=config)
+
+response = manager.process_input(query="Tell me a joke.")
+print(f"Response: {response}")
+
+# --- Example 5:  Using MemoryStore (FAISS) ---
 from mindforge.core.memory_store import MemoryStore
 import numpy as np
 
