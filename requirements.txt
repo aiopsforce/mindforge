@@ -6,3 +6,7 @@ requests>=2.32.3
 scikit-learn>=1.6.1
 scipy>=1.10.0
 sqlite-vec>=0.1.6
+chromadb>=1.0.0
+redisvl>=0.8.0
+psycopg2-binary>=2.9.0
+pgvector>=0.4.1
