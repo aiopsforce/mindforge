@@ -25,6 +25,14 @@ class MemoryStore:
         self.session_memory = defaultdict(list)
         # agent_memory stores a list of interaction_ids
         self.agent_memory = []
+        # Additional memory types
+        self.persona_memory = []
+        self.toolbox_memory = []
+        self.conversation_memory = []
+        self.workflow_memory = []
+        self.episodic_memory = []
+        self.registry_memory = []
+        self.entity_memory = []
 
         # Initialize the vector store
         self._init_vector_store()
@@ -73,6 +81,20 @@ class MemoryStore:
         elif memory_level == "long_term":
             # long_term_memory stores the full interaction, not just ID
             self.long_term_memory.append(interaction)
+        elif memory_level == "persona":
+            self.persona_memory.append(interaction_id)
+        elif memory_level == "toolbox":
+            self.toolbox_memory.append(interaction_id)
+        elif memory_level == "conversation":
+            self.conversation_memory.append(interaction_id)
+        elif memory_level == "workflow":
+            self.workflow_memory.append(interaction_id)
+        elif memory_level == "episodic":
+            self.episodic_memory.append(interaction_id)
+        elif memory_level == "registry":
+            self.registry_memory.append(interaction_id)
+        elif memory_level == "entity":
+            self.entity_memory.append(interaction_id)
         # No specific action for "short_term" as it's already in short_term_memory by default
 
     def retrieve(
@@ -164,6 +186,20 @@ class MemoryStore:
         elif memory_level == "long_term":
             # Assuming long_term_memory stores full interaction objects
             allowed_ids = {lt_interaction["id"] for lt_interaction in self.long_term_memory}
+        elif memory_level == "persona":
+            allowed_ids = set(self.persona_memory)
+        elif memory_level == "toolbox":
+            allowed_ids = set(self.toolbox_memory)
+        elif memory_level == "conversation":
+            allowed_ids = set(self.conversation_memory)
+        elif memory_level == "workflow":
+            allowed_ids = set(self.workflow_memory)
+        elif memory_level == "episodic":
+            allowed_ids = set(self.episodic_memory)
+        elif memory_level == "registry":
+            allowed_ids = set(self.registry_memory)
+        elif memory_level == "entity":
+            allowed_ids = set(self.entity_memory)
         elif memory_level == "short_term":
             # Interactions are already from short_term_memory via FAISS, so no ID filtering needed here.
             perform_filtering = False
@@ -172,8 +208,20 @@ class MemoryStore:
             perform_filtering = False
 
         if perform_filtering:
-            if not allowed_ids and memory_level in ["user", "session", "agent", "long_term"]:
-                 # If allowed_ids is empty for these specific levels, it means no relevant memories exist.
+            if not allowed_ids and memory_level in [
+                "user",
+                "session",
+                "agent",
+                "long_term",
+                "persona",
+                "toolbox",
+                "conversation",
+                "workflow",
+                "episodic",
+                "registry",
+                "entity",
+            ]:
+                # If allowed_ids is empty for these specific levels, it means no relevant memories exist.
                 return []
             return [
                 interaction for interaction in interactions if interaction["id"] in allowed_ids

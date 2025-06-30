@@ -78,7 +78,20 @@ class SQLiteEngine(BaseStorage):
                     access_count INTEGER NOT NULL DEFAULT 1,
                     last_access REAL NOT NULL,
                     memory_type TEXT CHECK(
-                        memory_type IN ('short_term', 'long_term', 'user', 'session', 'agent')
+                        memory_type IN (
+                            'short_term',
+                            'long_term',
+                            'user',
+                            'session',
+                            'agent',
+                            'persona',
+                            'toolbox',
+                            'conversation',
+                            'workflow',
+                            'episodic',
+                            'registry',
+                            'entity'
+                        )
                     ) NOT NULL,
                     recency_boost REAL DEFAULT 1.0
                 );
@@ -296,6 +309,13 @@ class SQLiteEngine(BaseStorage):
                     JOIN agent_memories am_filter ON m.id = am_filter.memory_id
                 """
                 params = ([query_vector, limit * 2] if self.vec_enabled else [])
+            elif memory_type:
+                type_join = "WHERE m.memory_type = ?"
+                params = (
+                    [query_vector, limit * 2, memory_type]
+                    if self.vec_enabled
+                    else [memory_type]
+                )
             else:
                 type_join = ""
                 params = ([query_vector, limit * 2] if self.vec_enabled else [])

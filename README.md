@@ -11,6 +11,13 @@ MindForge is a Python library designed to provide sophisticated memory managemen
     *   **User-Specific Memory:**  Tailored to individual users.
     *   **Session-Specific Memory:**  Contextual information for a single session.
     *   **Agent-Specific Memory:**  Knowledge and adaptability specific to the AI agent.
+    *   **Persona Memory:**  Relationship-building data for more natural interactions.
+    *   **Toolbox Memory:**  JSON schemas of available tools.
+    *   **Conversation Memory:**  History of LLM interactions.
+    *   **Workflow Memory:**  Past action outcomes to improve decisions.
+    *   **Episodic Memory:**  Collections of significant events.
+    *   **Agent Registry:**  Registry of available agents and capabilities.
+    *   **Entity Memory:**  Structured information about key entities.
 *   **Vector-Based Similarity Search:**  Uses `sqlite-vec` (and optionally FAISS) for fast and efficient retrieval of memories based on semantic similarity.
 *   **Concept Graph:**  Builds and maintains a graph of relationships between concepts, enabling spreading activation for enhanced retrieval.
 *   **Semantic Clustering:**  Groups memories based on their embeddings, improving retrieval efficiency and identifying related concepts.
