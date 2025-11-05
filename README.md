@@ -1,7 +1,17 @@
 # MindForge
-MindForge is a Python library designed to provide sophisticated memory management capabilities for AI agents and models. It combines vector-based similarity search, concept graphs, and multi-level memory structures (short-term, long-term, user-specific, session-specific, and agent-specific) to enable more context-aware and adaptive AI responses.
 
-### *** Work In Progress ***
+<div align="center">
+
+**Sophisticated Memory Management for AI Agents**
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
+
+</div>
+
+MindForge is a production-ready Python library that provides sophisticated memory management capabilities for AI agents and language models. It combines vector-based similarity search, concept graphs, and multi-level memory structures to enable truly context-aware and adaptive AI applications.
+
+## ✨ Key Features
 
 ## Features
 
@@ -28,7 +38,9 @@ MindForge is a Python library designed to provide sophisticated memory managemen
 *   **Built-in Utilities:**  Includes tools for logging, monitoring, vector optimization, profiling, and input validation.
 *   **Configurable:** Uses dataclasses for easy configuration of memory, vector, model, and storage parameters.
 
-## Installation
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
 pip install mindforge
@@ -37,47 +49,49 @@ pip install mindforge
 Or install from source:
 
 ```bash
-git clone https://github.com/yourusername/mindforge.git
+git clone https://github.com/aiopsforce/mindforge.git
 cd mindforge
 pip install -e .
 ```
 
-## Dependencies:
-
-The canonical list of dependencies is maintained in the `pyproject.toml` file.
-For quick installation using pip, you can install the core dependencies with the following command:
-
-```bash
-pip install azure-openai faiss-cpu numpy openai requests scikit-learn scipy sqlite-vec
-```
-Note: If you clone the repository and want to install all dependencies for development, including the MindForge package itself in editable mode, please use `pip install -e .` from the repository root, as done by the `run_example.sh` script. The `run_example.sh` script also handles creating a virtual environment.
-
-## Quick Start
+### Basic Usage
 
 ```python
+import os
 from mindforge import MemoryManager
 from mindforge.models.chat import OpenAIChatModel
 from mindforge.models.embedding import OpenAIEmbeddingModel
+from mindforge.storage.sqlite_engine import SQLiteEngine
+from mindforge.config import AppConfig
+
+# Setup
+config = AppConfig()
+api_key = os.getenv("OPENAI_API_KEY")
 
 # Initialize models
-chat_model = OpenAIChatModel(api_key="your-openai-key")
-embedding_model = OpenAIEmbeddingModel(api_key="your-openai-key")
+chat_model = OpenAIChatModel(api_key=api_key, model_name="gpt-3.5-turbo")
+embedding_model = OpenAIEmbeddingModel(api_key=api_key)
+
+# Initialize storage
+storage = SQLiteEngine(db_path="mindforge.db", embedding_dim=1536)
 
 # Create memory manager
 manager = MemoryManager(
     chat_model=chat_model,
     embedding_model=embedding_model,
-    db_path="mindforge.db"
+    storage_engine=storage,
+    config=config
 )
 
-# Process a query
-response = manager.process_input(
-    query="What is machine learning?",
-    user_id="user123",
-    session_id="session456"
-)
+# Use it!
+response = manager.process_input("Hello! My name is Alice.")
 print(response)
+
+response = manager.process_input("What's my name?")
+print(response)  # "Your name is Alice."
 ```
+
+That's it! Your AI now has memory. 🎉
 
 ## Advanced Usage
 ```python
@@ -236,51 +250,86 @@ retrieved = memory_store.retrieve(query_embedding, query_concepts, memory_level=
 print(f"Retrieved interactions: {retrieved}")
 ```
 
-## Running the Full Example
+## 📚 Documentation
 
-A helper script `run_example.sh` is provided in the root of the repository to streamline the setup and execution of a comprehensive example found in `examples/full_example.py`.
+- **[Getting Started Guide](docs/GETTING_STARTED.md)** - Complete guide for new users
+- **[Architecture Overview](docs/ARCHITECTURE.md)** - Deep dive into how MindForge works
+- **[Examples](examples/)** - Real-world usage examples
 
-This script will:
-1. Check for the required Python version (3.12+).
-2. Create a Python virtual environment in `.venv/` if it doesn't exist.
-3. Activate the virtual environment.
-4. Install all necessary dependencies using `pip install -e .` (which installs the package in editable mode along with its dependencies listed in `pyproject.toml`).
-5. Guide you through the necessary API key configuration for services like OpenAI or Azure OpenAI before running the example.
+### Examples
 
-To use the script, navigate to the root of the repository in your terminal and run:
+Check out the [examples](examples/) directory for comprehensive demonstrations:
+
+- `01_basic_usage.py` - Simple introduction to MindForge
+- `02_memory_types.py` - Exploring different memory types
+- `03_multi_model_support.py` - Using different LLM providers
+- `full_example.py` - Complete feature demonstration
+
+Run an example:
 ```bash
-./run_example.sh
+export OPENAI_API_KEY='your-key-here'
+python examples/01_basic_usage.py
 ```
-Or, if it's not executable by default on your system:
-```bash
-bash run_example.sh
-```
-The script will prompt you to confirm that you have set the required API keys as environment variables. Please follow the instructions provided by the script.
 
-## MemoryManager
-The MemoryManager is the central class for processing user input and managing memories.
+## 💡 Key Concepts
 
-# Initialize MemoryManager (see Quick Start for model initialization)
-manager = MemoryManager(chat_model, embedding_model, config)
+### Memory Types
 
-# Process user input
+MindForge supports five distinct memory types for different use cases:
+
+| Memory Type | Purpose | Use Case | Persistence |
+|-------------|---------|----------|-------------|
+| **Short-term** | Recent conversation context | Chatbots, Q&A | Temporary |
+| **Long-term** | Persistent knowledge | Knowledge bases | Permanent |
+| **User-specific** | Per-user personalization | Multi-user apps | Permanent |
+| **Session-specific** | Conversation threads | Task continuity | Session-scoped |
+| **Agent-specific** | Agent self-knowledge | Capabilities | Permanent |
+
+### Example: User-specific Memory
+
 ```python
-response = manager.process_input(
-    query="What is the meaning of life?",
-    user_id="user123",      # Optional:  Associate with a specific user
-    session_id="session456", # Optional:  Associate with a specific session
-    memory_type="short_term" # Optional: Specify memory type (short_term, long_term, user, session, agent)
+# User Alice
+manager.process_input(
+    "My favorite color is blue.",
+    user_id="alice",
+    memory_type="user"
 )
-print(response)
+
+# User Bob
+manager.process_input(
+    "My favorite color is red.",
+    user_id="bob",
+    memory_type="user"
+)
+
+# Later...
+response = manager.process_input(
+    "What's my favorite color?",
+    user_id="alice",
+    memory_type="user"
+)
+# Returns: "Your favorite color is blue."
 ```
 
-Generates an embedding of the query using the embedding_model.
-Extracts key concepts from the query using the chat_model.
-Retrieves relevant memories from the storage (using SQLiteEngine or SQLiteVecEngine). You can filter by memory_type, user_id, and session_id.
-Builds a context dictionary from the retrieved memories.
-Generates a response using the chat_model, passing the context and query.
-Stores the interaction (query, response, embedding, concepts) in the storage.
-Updates the concept graph and semantic clusters.
+## 🔌 Supported Providers
+
+### LLM Providers
+
+| Provider | Chat Models | Embedding Models | Setup |
+|----------|-------------|------------------|-------|
+| **OpenAI** | GPT-3.5, GPT-4, GPT-4-turbo | text-embedding-3-small/large | `export OPENAI_API_KEY='...'` |
+| **Azure OpenAI** | All Azure deployments | All Azure deployments | Configure endpoint + key |
+| **Ollama** | llama2, mistral, etc. | Local embeddings | Install Ollama locally |
+| **LiteLLM** | 100+ models | Universal support | Provider-specific keys |
+
+### Storage Backends
+
+| Backend | Use Case | Scalability | Setup Complexity |
+|---------|----------|-------------|------------------|
+| **SQLite** | Development, single-process | Low | Easy |
+| **PostgreSQL** | Production, multi-process | High | Medium |
+| **Redis** | High-throughput | Very High | Medium |
+| **ChromaDB** | Document-oriented | Medium | Easy |
 
 ## MemoryStore
 The MemoryStore class provides a more direct way to interact with the memory storage, using FAISS for vector indexing.
@@ -424,5 +473,44 @@ def my_function():
     pass
 ```
 
-## Contributing
-Contributions are welcome! Please see the project's GitHub repository for guidelines. This includes bug reports, feature requests, and code contributions.
+## 🤝 Contributing
+
+We welcome contributions! Here's how you can help:
+
+1. **Report Issues**: Found a bug? [Open an issue](https://github.com/aiopsforce/mindforge/issues)
+2. **Submit PRs**: Have a fix or feature? Submit a pull request
+3. **Improve Docs**: Help us improve documentation
+4. **Share Examples**: Show us how you're using MindForge!
+
+### Development Setup
+
+```bash
+git clone https://github.com/aiopsforce/mindforge.git
+cd mindforge
+pip install -e .
+pytest tests/  # Run tests
+```
+
+## 📄 License
+
+MindForge is released under the MIT License. See [LICENSE.md](LICENSE.md) for details.
+
+## 🙏 Acknowledgments
+
+MindForge builds upon excellent open-source projects:
+- OpenAI for GPT and embedding models
+- FAISS for vector similarity search
+- SQLite and sqlite-vec for storage
+- The entire Python ML ecosystem
+
+## 📧 Support
+
+- **Issues**: [GitHub Issues](https://github.com/aiopsforce/mindforge/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/aiopsforce/mindforge/discussions)
+- **Documentation**: [Full Documentation](docs/)
+
+---
+
+<div align="center">
+Made with ❤️ by the MindForge team
+</div>

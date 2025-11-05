@@ -1,6 +1,7 @@
 import numpy as np
 from azure.openai import AzureOpenAI
 from ...core.base_model import BaseEmbeddingModel
+from ...utils.errors import ModelError
 
 
 class AzureEmbeddingModel(BaseEmbeddingModel):
