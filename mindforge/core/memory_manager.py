@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 import uuid
 from datetime import datetime
 from .base_model import BaseChatModel, BaseEmbeddingModel
+from .memory_types import MemoryType
 from ..storage.base_storage import BaseStorage # Import BaseStorage
 from ..storage.sqlite_engine import SQLiteEngine
 from ..utils.graph import ConceptGraph
@@ -36,11 +37,15 @@ class MemoryManager:
         query: str,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        memory_type: str = "short_term",
+        memory_type: str | MemoryType = MemoryType.SHORT_TERM,
     ) -> str:
         """
         Process user input with multi-level memory context.
         """
+        # Normalize memory_type to string
+        if isinstance(memory_type, MemoryType):
+            memory_type = memory_type.value
+
         # Generate embedding and extract concepts
         query_embedding = self.embedding_model.get_embedding(query)
         concepts = self.chat_model.extract_concepts(query)
@@ -153,14 +158,28 @@ class MemoryManager:
             memory_data['session_id'] = session_id
 
         # Add type-specific metadata, handling optional values
-        if memory_type == "user":
+        if memory_type == MemoryType.USER_SPECIFIC.value:
             memory_data.update(
                 {"preference": 1.0, "history": 1.0}
             )  # No need to check for None
-        elif memory_type == "session":
+        elif memory_type == MemoryType.SESSION_SPECIFIC.value:
             memory_data.update({"recent_activity": 1.0, "context": 1.0})
-        elif memory_type == "agent":
+        elif memory_type == MemoryType.AGENT_SPECIFIC.value:
             memory_data.update({"knowledge": 1.0, "adaptability": 1.0})
+        elif memory_type == MemoryType.PERSONA.value:
+             memory_data.update({"relationship_strength": 1.0, "interaction_style": "friendly"})
+        elif memory_type == MemoryType.TOOLBOX.value:
+            memory_data.update({"tool_schema": {}, "usage_count": 0})
+        elif memory_type == MemoryType.CONVERSATION.value:
+            memory_data.update({"message_role": "user", "token_count": len(query.split())})
+        elif memory_type == MemoryType.WORKFLOW.value:
+            memory_data.update({"outcome": "success", "duration": 0.0})
+        elif memory_type == MemoryType.EPISODIC.value:
+            memory_data.update({"significance": 0.8, "location": "chat_interface"})
+        elif memory_type == MemoryType.AGENT_REGISTRY.value:
+             memory_data.update({"capabilities": [], "status": "active"})
+        elif memory_type == MemoryType.ENTITY.value:
+             memory_data.update({"entity_type": "unknown", "attributes": {}})
 
         # Store the memory
         self.storage.store_memory(
