@@ -88,7 +88,7 @@ def test_process_input_basic_flow(
     mock_storage_engine.retrieve_memories.assert_called_once_with(
         query_embedding=mock_embedding_model.get_embedding.return_value,
         concepts=mock_chat_model.extract_concepts.return_value,
-        memory_level=memory_type, # Changed from memory_type to memory_level
+        memory_type=memory_type,
         user_id=user_id,
         session_id=session_id
     )
@@ -134,7 +134,7 @@ def test_process_input_basic_flow(
     assert stored_memory_data_dict["user_id"] == user_id # Ensure user_id is in memory_data
     assert stored_memory_data_dict["session_id"] == session_id # Ensure session_id is in memory_data
     
-    assert store_kwargs["memory_level"] == memory_type # Changed from memory_type to memory_level
+    assert store_kwargs["memory_type"] == memory_type
     assert store_kwargs["user_id"] == user_id
     assert store_kwargs["session_id"] == session_id
 
@@ -225,7 +225,7 @@ def test_process_input_user_memory(
     mock_storage_engine.retrieve_memories.assert_called_once_with(
         query_embedding=expected_embedding,
         concepts=expected_concepts,
-        memory_level=memory_type,
+        memory_type=memory_type,
         user_id=user_id,
         session_id=session_id
     )
@@ -245,7 +245,7 @@ def test_process_input_user_memory(
     else:
         assert "session_id" not in memory_data_dict # Or assert it's None if it's always added
 
-    assert kwargs["memory_level"] == memory_type
+    assert kwargs["memory_type"] == memory_type
     assert kwargs["user_id"] == user_id
     assert kwargs["session_id"] == session_id
 
@@ -273,7 +273,7 @@ def test_process_input_session_memory(
     mock_storage_engine.retrieve_memories.assert_called_once_with(
         query_embedding=expected_embedding,
         concepts=expected_concepts,
-        memory_level=memory_type,
+        memory_type=memory_type,
         user_id=user_id,
         session_id=session_id
     )
@@ -292,7 +292,7 @@ def test_process_input_session_memory(
     else:
         assert "user_id" not in memory_data_dict
 
-    assert kwargs["memory_level"] == memory_type
+    assert kwargs["memory_type"] == memory_type
     assert kwargs["user_id"] == user_id
     assert kwargs["session_id"] == session_id
 
@@ -320,7 +320,7 @@ def test_process_input_agent_memory(
     mock_storage_engine.retrieve_memories.assert_called_once_with(
         query_embedding=expected_embedding,
         concepts=expected_concepts,
-        memory_level=memory_type,
+        memory_type=memory_type,
         user_id=user_id,
         session_id=session_id
     )
@@ -336,7 +336,7 @@ def test_process_input_agent_memory(
     assert "user_id" not in memory_data_dict # Should not be present if None
     assert "session_id" not in memory_data_dict # Should not be present if None
     
-    assert kwargs["memory_level"] == memory_type
+    assert kwargs["memory_type"] == memory_type
     assert kwargs["user_id"] == user_id
     assert kwargs["session_id"] == session_id
 
